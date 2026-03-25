@@ -13,29 +13,37 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const __dirname = path.resolve();
 
-// middleware
-if (process.env.NODE_ENV !== "production") {
-  app.use(
-    cors({
-      origin: "http://localhost:5173",
-    })
-  );
-}
-app.use(express.json()); // this middleware will parse JSON bodies: req.body
-app.use(rateLimiter);
+app.set("trust proxy", 1);
 
-// our simple custom middleware
-// app.use((req, res, next) => {
-//   console.log(`Req method is ${req.method} & Req URL is ${req.url}`);
-//   next();
-// });
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
+  })
+);
+
+app.use(express.json());
+app.use(rateLimiter);
 
 app.use("/api/notes", notesRoutes);
 
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname,"../frontend", "dist")));
+app.get("/api/health", (_req, res) => {
+  res.status(200).json({ ok: true });
+});
 
-  app.get("*", (req, res) => {
+const serveFrontend = process.env.SERVE_FRONTEND === "true";
+
+if (serveFrontend) {
+  app.use(express.static(path.join(__dirname, "../frontend", "dist")));
+  app.get("*", (_req, res) => {
     res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
   });
 }
